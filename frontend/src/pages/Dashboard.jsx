@@ -40,7 +40,9 @@ const Dashboard = () => {
       setStats(s.data);
       setLastUpdated(new Date().toISOString());
     } catch (e) {
-      console.error("fetch alerts failed", e);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("fetch alerts failed", e);
+      }
       toast.error("Could not load alerts feed");
     } finally {
       setLoading(false);
@@ -80,12 +82,16 @@ const Dashboard = () => {
                 description: `${msg.alert.country} · severity ${msg.alert.severity}`,
               });
             }
-          } catch (_) {
-            /* noop */
+          } catch (err) {
+            if (process.env.NODE_ENV !== "production") {
+              console.warn("ws message parse failed", err);
+            }
           }
         };
       } catch (e) {
-        console.error("ws connect failed", e);
+        if (process.env.NODE_ENV !== "production") {
+          console.error("ws connect failed", e);
+        }
       }
     };
     connect();

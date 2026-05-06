@@ -375,6 +375,7 @@ _cache_meta: Dict[str, datetime] = {}
 
 
 async def _refresh_category(category: str) -> List[Alert]:
+    alerts: List[Alert] = []
     if category == "weather":
         alerts = await fetch_weather_alerts()
     elif category == "disease":
