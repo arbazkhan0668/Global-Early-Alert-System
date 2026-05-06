@@ -1,0 +1,90 @@
+{
+  "project_name": "Global Early Alert System",
+  "theme": "Dark",
+  "archetype": "Archetype 2 (Performance Pro / Tactical Command Center)",
+  "core_concept": "A high-end tactical command center relying on deep space blacks, high-contrast functional accents, and crystal clear glassmorphism over a dark global map. Avoids generic SaaS looks, aiming for military-grade precision and situational awareness.",
+  "colors": {
+    "base": {
+      "background": "#050505",
+      "surface_solid": "#0F0F13",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#A1A1AA",
+      "border_subtle": "rgba(255, 255, 255, 0.08)"
+    },
+    "glassmorphism": {
+      "background": "rgba(10, 15, 20, 0.45)",
+      "blur": "backdrop-blur-xl",
+      "saturate": "backdrop-saturate-150",
+      "border": "border border-white/10",
+      "shadow": "shadow-[0_8px_32px_rgba(0,0,0,0.4)]",
+      "inner_glow": "shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+    },
+    "alerts": {
+      "heatwave": "#FF3B30",
+      "flood": "#007AFF",
+      "disease": "#34C759",
+      "conflict": "#FFCC00"
+    }
+  },
+  "typography": {
+    "strategy": "Swiss Brutalist meets Command Center. Sharp, legible, high contrast.",
+    "fonts": {
+      "headings": "IBM Plex Sans",
+      "body": "Inter",
+      "data_numbers": "JetBrains Mono"
+    },
+    "scale": {
+      "h1": "text-4xl tracking-tighter font-semibold",
+      "h2": "text-2xl tracking-tight font-medium",
+      "h3": "text-lg font-medium",
+      "body": "text-sm leading-relaxed",
+      "labels_overlines": "text-xs tracking-[0.2em] uppercase font-bold text-zinc-400"
+    }
+  },
+  "layout": {
+    "strategy": "Absolute positioning over a full-screen map. Elements float as glass layers (z-10) above the base map (z-0).",
+    "map_layer": "Full-screen fixed layout (h-screen w-screen). Leaflet TileLayer: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'",
+    "header": "Floating at the top, spans almost full width with side margins. Contains logo and live stats. Glassmorphism styling.",
+    "sidebar_feed": "Floating on the right side. Fixed width, scrollable inner list. Uses grid-cols-1 with tight gap-4. Displays active alerts.",
+    "bottom_bar": "Floating at the bottom. Contains the Historical Timeline Slider and risk heatmap toggles. Spans wide but leaves edge gaps.",
+    "spacing": "Generous padding inside glass panels (p-6). Margins around floating panels (m-4 or m-6) to let map bleed through."
+  },
+  "components": {
+    "map": {
+      "library": "react-leaflet",
+      "style": "Dark mode map tiles without labels if possible, to let data shine. Active alert markers must use custom HTML markers with pulsing CSS."
+    },
+    "glass_panel": "div class: bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl",
+    "alert_card": {
+      "base": "Relative flex items-start p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors cursor-pointer",
+      "indicator": "Absolute left-0 top-0 bottom-0 w-1 rounded-l-xl opacity-80"
+    },
+    "timeline_slider": {
+      "base": "Use Shadcn Slider, override track to bg-white/20, override thumb to pure white with brand-colored glow depending on context."
+    },
+    "icons": {
+      "library": "lucide-react",
+      "usage": "Use with 1.5 stroke width. Color them purely based on data context (alert colors) or text-secondary."
+    }
+  },
+  "animations": {
+    "marker_pulse": {
+      "css": "@keyframes pulse-ring { 0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(var(--alert-rgb), 0.7); } 70% { transform: scale(1.2); box-shadow: 0 0 0 15px rgba(var(--alert-rgb), 0); } 100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(var(--alert-rgb), 0); } }"
+    },
+    "feed_entrance": "Staggered fade-in from the right (Framer Motion: x: 20, opacity: 0 -> x: 0, opacity: 1, stagger: 0.1s)",
+    "interactions": "Hover states on cards: slight translate-y-[-2px] and border-white/20 transition."
+  },
+  "media": {
+    "icons_urls": [],
+    "backgrounds": []
+  },
+  "instructions_to_main_agent": [
+    "INSTALLATION: Install react-leaflet, leaflet, lucide-react, framer-motion, @fontsource/ibm-plex-sans, @fontsource/jetbrains-mono.",
+    "CSS SETUP: Add custom pulse animation to global CSS or Tailwind config. Extend colors in tailwind.config.js for 'alert-heatwave' (red), 'alert-flood' (blue), etc.",
+    "COMPONENTS: Use Shadcn UI for dropdowns, sliders, and toggles, but heavily override their default Vercel look with the glassmorphism parameters defined above.",
+    "MAP IMPLEMENTATION: Use CartoDB Dark Matter tiles (https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png). Ensure the map is z-0 and panels are absolute z-10.",
+    "DATA RENDERING: Markers must use Leaflet DivIcon to inject HTML/CSS for the glowing pulse animation. Map color variables to the markers based on severity.",
+    "TESTING: Add data-testid attributes to all interactive elements (e.g., data-testid='timeline-slider', data-testid='filter-disease').",
+    "ACCESSIBILITY: Ensure text contrast inside glass panels meets APCA standards. Use text-shadow if map elements interfere with readability."
+  ]
+}
