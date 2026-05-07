@@ -134,6 +134,11 @@ const Dashboard = () => {
     }
   };
 
+  const handleShareDigest = () => {
+    const btn = document.querySelector("[data-testid='share-btn']");
+    if (btn) btn.click();
+  };
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#050505]">
       {/* Map base layer */}
@@ -169,7 +174,7 @@ const Dashboard = () => {
       {/* Right feed */}
       <div className="absolute right-0 top-24 bottom-24 z-20 pointer-events-none flex">
         <div className="pointer-events-auto h-full">
-          <AlertsFeed alerts={filtered} onSelect={setFocus} loading={loading} />
+          <AlertsFeed alerts={filtered} onSelect={setFocus} loading={loading} onShareDigest={handleShareDigest} />
         </div>
       </div>
 

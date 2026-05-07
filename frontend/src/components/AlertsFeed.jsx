@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 import { colorForAlert, formatTimeAgo, subtypeIcon } from "@/lib/alerts";
+import DigestCard from "@/components/DigestCard";
 
 const AlertCard = ({ alert, onSelect, index }) => {
   const Icon = subtypeIcon(alert.subtype);
@@ -59,7 +60,7 @@ const AlertCard = ({ alert, onSelect, index }) => {
   );
 };
 
-const AlertsFeed = ({ alerts, onSelect, loading }) => {
+const AlertsFeed = ({ alerts, onSelect, loading, onShareDigest }) => {
   return (
     <motion.aside
       initial={{ x: 40, opacity: 0 }}
@@ -81,6 +82,7 @@ const AlertsFeed = ({ alerts, onSelect, loading }) => {
         </span>
       </div>
       <div className="px-4 pb-4 flex-1 overflow-y-auto thin-scroll space-y-2.5">
+        <DigestCard alerts={alerts} onShare={onShareDigest} />
         <AnimatePresence initial={false}>
           {alerts.map((a, i) => (
             <AlertCard key={a.id} alert={a} onSelect={onSelect} index={i} />
