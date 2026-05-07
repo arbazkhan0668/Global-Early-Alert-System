@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Sunrise, TrendingUp, Share2 } from "lucide-react";
 import { CATEGORY_COLORS } from "@/lib/alerts";
+import { recordTodayDigest } from "@/lib/digestHistory";
+import DigestHistoryDrawer from "@/components/DigestHistoryDrawer";
 
 /**
  * Daily Risk Digest card - a pinned summary of today's global alert landscape.
@@ -29,6 +31,11 @@ const DigestCard = ({ alerts, onShare }) => {
       topCategoryCount: topCat[1],
     };
   }, [alerts]);
+
+  // Persist today's digest to local history (no-op if alerts list is empty).
+  useEffect(() => {
+    if (digest) recordTodayDigest(digest);
+  }, [digest?.total, digest?.topCategory]);
 
   if (!digest) return null;
 
@@ -58,14 +65,17 @@ const DigestCard = ({ alerts, onShare }) => {
               Risk Digest · {today}
             </span>
           </div>
-          <button
-            onClick={onShare}
-            className="text-zinc-400 hover:text-white transition-colors"
-            title="Share digest"
-            data-testid="digest-share"
-          >
-            <Share2 className="w-3.5 h-3.5" strokeWidth={1.8} />
-          </button>
+          <div className="flex items-center gap-2.5">
+            <DigestHistoryDrawer />
+            <button
+              onClick={onShare}
+              className="text-zinc-400 hover:text-white transition-colors"
+              title="Share digest"
+              data-testid="digest-share"
+            >
+              <Share2 className="w-3.5 h-3.5" strokeWidth={1.8} />
+            </button>
+          </div>
         </div>
 
         <div className="flex items-baseline gap-2 mb-1">
