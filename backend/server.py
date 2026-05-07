@@ -16,10 +16,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+import resend
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
@@ -39,6 +40,12 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 
 OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "").strip()
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev").strip()
+SUBSCRIPTION_THROTTLE_SECONDS = 600  # max 1 email / 10 min per subscriber
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 # ---------------------------------------------------------------------------
 # Reference cities for weather sampling (global coverage)
@@ -112,6 +119,30 @@ class RiskResponse(BaseModel):
     std: float
     anomaly: bool
     reason: str
+
+
+SEVERITY_ORDER = {"low": 0, "moderate": 1, "high": 2, "critical": 3}
+
+
+class SubscriptionCreate(BaseModel):
+    email: EmailStr
+    categories: List[str] = Field(default_factory=lambda: ["weather", "disease", "conflict"])
+    min_severity: str = "high"
+
+
+class Subscription(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    email: EmailStr
+    categories: List[str]
+    min_severity: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_sent_at: Optional[datetime] = None
+
+
+class TestEmail(BaseModel):
+    email: EmailStr
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +464,92 @@ async def _get_alerts(category: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# Email dispatcher (Resend)
+# ---------------------------------------------------------------------------
+def _build_alert_email_html(alert: Dict[str, Any]) -> str:
+    color_map = {
+        "weather": "#FF3B30",
+        "disease": "#34C759",
+        "conflict": "#FFCC00",
+    }
+    color = color_map.get(alert["category"], "#007AFF")
+    risk_pct = int(round(alert.get("risk_score", 0) * 100))
+    return f"""
+<table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0A0F14;font-family:Inter,Arial,sans-serif;color:#fff;padding:24px">
+  <tr><td>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;margin:0 auto;background:#11161D;border:1px solid #1F242C;border-radius:16px;overflow:hidden">
+      <tr><td style="padding:24px 24px 8px">
+        <div style="font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:{color};font-weight:700">
+          {alert['category']} · {alert['severity']} · risk {risk_pct}%
+        </div>
+        <h1 style="margin:8px 0 0;font-size:22px;color:#fff">{alert['title']}</h1>
+      </td></tr>
+      <tr><td style="padding:8px 24px 0;color:#A1A1AA;font-size:14px;line-height:1.5">
+        {alert['description']}
+      </td></tr>
+      <tr><td style="padding:16px 24px 24px;color:#71717A;font-size:12px">
+        <strong style="color:#fff">Location:</strong> {alert.get('region','')}{', ' if alert.get('region') else ''}{alert.get('country','')}<br>
+        <strong style="color:#fff">Source:</strong> {alert.get('source','mock')}
+      </td></tr>
+      <tr><td style="padding:0 24px 24px">
+        <div style="height:1px;background:#1F242C;margin-bottom:16px"></div>
+        <div style="font-size:11px;color:#71717A">
+          You're receiving this because you subscribed to Global Early Alert System updates.
+        </div>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+""".strip()
+
+
+async def _send_email(to: str, subject: str, html: str) -> Optional[str]:
+    """Send email via Resend; returns email id or None on failure."""
+    if not RESEND_API_KEY:
+        logger.info("[email mock] would send to %s: %s", to, subject)
+        return None
+    try:
+        params = {"from": SENDER_EMAIL, "to": [to], "subject": subject, "html": html}
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        return result.get("id") if isinstance(result, dict) else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("resend send failed for %s: %s", to, exc)
+        return None
+
+
+async def _dispatch_alert_to_subscribers(alert: Dict[str, Any]) -> int:
+    """Match a new alert to subscribers and send emails (throttled)."""
+    if not RESEND_API_KEY:
+        return 0
+    subs = await db.subscriptions.find({}, {"_id": 0}).to_list(1000)
+    sent = 0
+    now = datetime.now(timezone.utc)
+    sev_rank = SEVERITY_ORDER.get(alert.get("severity", "low"), 0)
+    for s in subs:
+        if alert["category"] not in s.get("categories", []):
+            continue
+        if sev_rank < SEVERITY_ORDER.get(s.get("min_severity", "high"), 2):
+            continue
+        last_iso = s.get("last_sent_at")
+        if last_iso:
+            last = datetime.fromisoformat(last_iso) if isinstance(last_iso, str) else last_iso
+            if (now - last).total_seconds() < SUBSCRIPTION_THROTTLE_SECONDS:
+                continue
+        html = _build_alert_email_html(alert)
+        subject = f"[{alert['severity'].upper()}] {alert['title']}"
+        email_id = await _send_email(s["email"], subject, html)
+        if email_id:
+            await db.subscriptions.update_one(
+                {"id": s["id"]},
+                {"$set": {"last_sent_at": now.isoformat()}},
+            )
+            sent += 1
+    if sent:
+        logger.info("dispatched alert %s to %d subscribers", alert.get("title"), sent)
+    return sent
+
+
+# ---------------------------------------------------------------------------
 # WebSocket broadcaster
 # ---------------------------------------------------------------------------
 class ConnectionManager:
@@ -472,6 +589,11 @@ async def _periodic_pulse() -> None:
             if new_alerts:
                 pick = random.choice(new_alerts)
                 await manager.broadcast({"type": "alert", "alert": pick})
+                # Best-effort email dispatch to matching subscribers
+                try:
+                    await _dispatch_alert_to_subscribers(pick)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("dispatch failed: %s", exc)
         except Exception as exc:  # noqa: BLE001
             logger.warning("pulse failed: %s", exc)
         await asyncio.sleep(30)
@@ -581,6 +703,11 @@ async def sources_status():
             "provider": "ACLED (mock)",
             "sources": sorted(sources_by_cat.get("conflict", set())),
         },
+        "email": {
+            "live": bool(RESEND_API_KEY),
+            "provider": "Resend" if RESEND_API_KEY else "disabled",
+            "sender": SENDER_EMAIL if RESEND_API_KEY else None,
+        },
     }
 
 
@@ -595,6 +722,88 @@ async def refresh_alerts():
     for c in ("weather", "disease", "conflict"):
         await _refresh_category(c)
     return {"status": "refreshed", "at": datetime.now(timezone.utc).isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# Subscriptions
+# ---------------------------------------------------------------------------
+@api_router.post("/subscribe", response_model=Subscription)
+async def create_subscription(payload: SubscriptionCreate):
+    valid_cats = {"weather", "disease", "conflict"}
+    cats = [c for c in payload.categories if c in valid_cats]
+    if not cats:
+        raise HTTPException(status_code=400, detail="At least one valid category required")
+    if payload.min_severity not in SEVERITY_ORDER:
+        raise HTTPException(status_code=400, detail="Invalid severity")
+    sub = Subscription(
+        email=payload.email,
+        categories=cats,
+        min_severity=payload.min_severity,
+    )
+    doc = sub.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["last_sent_at"] = None
+    await db.subscriptions.insert_one(doc)
+    # Send welcome / confirmation email (best-effort)
+    welcome_html = (
+        "<div style='font-family:Inter,Arial,sans-serif;background:#0A0F14;color:#fff;padding:24px'>"
+        "<h2 style='margin:0 0 8px'>Subscription confirmed</h2>"
+        f"<p style='color:#A1A1AA;font-size:14px'>You'll receive Global Early Alert System notifications for "
+        f"<strong>{', '.join(cats)}</strong> at <strong>{payload.min_severity}+</strong> severity.</p>"
+        "<p style='color:#71717A;font-size:12px;margin-top:16px'>Throttle: max 1 email / 10 min per subscriber.</p>"
+        "</div>"
+    )
+    email_id = await _send_email(
+        payload.email,
+        "[GEAS] Subscription confirmed",
+        welcome_html,
+    )
+    if email_id:
+        logger.info("welcome email sent to %s (id=%s)", payload.email, email_id)
+    return sub
+
+
+@api_router.get("/subscriptions/{email}", response_model=List[Subscription])
+async def list_subscriptions(email: EmailStr):
+    docs = await db.subscriptions.find({"email": email}, {"_id": 0}).to_list(100)
+    out = []
+    for d in docs:
+        if isinstance(d.get("created_at"), str):
+            d["created_at"] = datetime.fromisoformat(d["created_at"])
+        if isinstance(d.get("last_sent_at"), str):
+            d["last_sent_at"] = datetime.fromisoformat(d["last_sent_at"])
+        out.append(d)
+    return out
+
+
+@api_router.delete("/subscribe/{sub_id}")
+async def delete_subscription(sub_id: str):
+    res = await db.subscriptions.delete_one({"id": sub_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    return {"status": "deleted", "id": sub_id}
+
+
+@api_router.post("/test-email")
+async def test_email(payload: TestEmail):
+    if not RESEND_API_KEY:
+        raise HTTPException(status_code=400, detail="RESEND_API_KEY not configured")
+    sample = {
+        "category": "weather",
+        "subtype": "heatwave",
+        "severity": "high",
+        "title": "Heatwave warning in Bangkok",
+        "description": "This is a test email from Global Early Alert System.",
+        "country": "Thailand",
+        "region": "Bangkok",
+        "risk_score": 0.78,
+        "source": "test",
+    }
+    html = _build_alert_email_html(sample)
+    eid = await _send_email(payload.email, "[GEAS][TEST] Heatwave warning", html)
+    if not eid:
+        raise HTTPException(status_code=502, detail="Resend send failed (likely test-mode restriction or invalid recipient)")
+    return {"status": "sent", "email_id": eid}
 
 
 @app.websocket("/api/ws")

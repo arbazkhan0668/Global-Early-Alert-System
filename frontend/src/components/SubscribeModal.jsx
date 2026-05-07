@@ -1,6 +1,7 @@
 import { useState } from "react";
+import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Mail, Check, Loader2, X } from "lucide-react";
+import { Bell, Mail, Check, Loader2, X, Send } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
 const CATEGORY_OPTIONS = [
   { key: "weather", label: "Weather & Floods", color: "#FF3B30" },
   { key: "disease", label: "Disease Outbreaks", color: "#34C759" },
@@ -23,9 +26,8 @@ const CATEGORY_OPTIONS = [
 const SEV_LABELS = ["low", "moderate", "high", "critical"];
 
 /**
- * Demo-only subscribe modal.
- * Flow: fake 1.2s "send" animation → success state → toast.
- * No backend call; purely UI state for demonstration purposes.
+ * Subscribe modal. Calls real backend POST /api/subscribe which persists
+ * the subscription in Mongo and sends a confirmation email via Resend.
  */
 const SubscribeModal = () => {
   const [open, setOpen] = useState(false);
@@ -33,15 +35,17 @@ const SubscribeModal = () => {
   const [cats, setCats] = useState({ weather: true, disease: true, conflict: true });
   const [minSev, setMinSev] = useState(2);
   const [status, setStatus] = useState("idle"); // idle | sending | sent
+  const [sentEmail, setSentEmail] = useState("");
 
   const reset = () => {
     setEmail("");
     setCats({ weather: true, disease: true, conflict: true });
     setMinSev(2);
     setStatus("idle");
+    setSentEmail("");
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
       toast.error("Please enter a valid email");
       return;
@@ -52,12 +56,42 @@ const SubscribeModal = () => {
       return;
     }
     setStatus("sending");
-    setTimeout(() => {
-      setStatus("sent");
-      toast.success("Alert preview sent", {
-        description: `Dispatched to ${email} · ${chosen.length} categor${chosen.length === 1 ? "y" : "ies"} · ${SEV_LABELS[minSev]}+`,
+    try {
+      await axios.post(`${API}/subscribe`, {
+        email,
+        categories: chosen,
+        min_severity: SEV_LABELS[minSev],
       });
-    }, 1200);
+      setSentEmail(email);
+      setStatus("sent");
+      toast.success("Subscribed", {
+        description: `Confirmation email sent to ${email}`,
+      });
+    } catch (err) {
+      const detail = err?.response?.data?.detail || "Could not subscribe";
+      toast.error(detail);
+      setStatus("idle");
+    }
+  };
+
+  const handleSendTest = async () => {
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      toast.error("Enter your email above first");
+      return;
+    }
+    setStatus("sending");
+    try {
+      await axios.post(`${API}/test-email`, { email });
+      setSentEmail(email);
+      setStatus("sent");
+      toast.success("Test alert sent", {
+        description: `Check ${email} (Resend test mode delivers only to your registered Resend address).`,
+      });
+    } catch (err) {
+      const detail = err?.response?.data?.detail || "Test email failed";
+      toast.error(detail);
+      setStatus("idle");
+    }
   };
 
   const handleClose = (v) => {
@@ -87,9 +121,12 @@ const SubscribeModal = () => {
               Alert Subscription
             </DialogTitle>
             <DialogDescription className="text-zinc-400 text-xs">
-              Get a preview alert sent to your inbox when thresholds trigger.
-              <span className="block mt-1 text-[10px] text-amber-300/90">
-                DEMO MODE — this preview does not persist or transmit real email.
+              Get matching alerts delivered to your inbox in real time.
+              <span className="block mt-1 text-[10px] text-emerald-300/90">
+                LIVE · Resend · throttled to 1 email / 10 min per subscriber
+              </span>
+              <span className="block mt-0.5 text-[10px] text-amber-300/80">
+                Resend test mode delivers only to your registered Resend address until you verify a domain.
               </span>
             </DialogDescription>
           </DialogHeader>
@@ -160,7 +197,18 @@ const SubscribeModal = () => {
                   />
                 </div>
 
-                <DialogFooter className="gap-2 sm:gap-2">
+                <DialogFooter className="gap-2 sm:gap-2 sm:flex-row">
+                  <Button
+                    variant="ghost"
+                    onClick={handleSendTest}
+                    disabled={status === "sending"}
+                    className="text-zinc-400 hover:text-white hover:bg-white/5"
+                    data-testid="subscribe-test"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-2" />
+                    Send test
+                  </Button>
+                  <div className="flex-1" />
                   <Button
                     variant="ghost"
                     onClick={() => handleClose(false)}
@@ -177,12 +225,12 @@ const SubscribeModal = () => {
                     {status === "sending" ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                        Dispatching…
+                        Subscribing…
                       </>
                     ) : (
                       <>
                         <Mail className="w-3.5 h-3.5 mr-2" />
-                        Send preview
+                        Subscribe
                       </>
                     )}
                   </Button>
@@ -206,14 +254,17 @@ const SubscribeModal = () => {
                   <Check className="w-6 h-6 text-emerald-400" strokeWidth={2.4} />
                 </motion.div>
                 <div className="font-display text-lg font-semibold mb-1">
-                  Alert sent
+                  Subscription active
                 </div>
                 <div className="text-sm text-zinc-400 mb-1">
-                  Preview dispatched to{" "}
-                  <span className="text-white font-mono-data text-xs">{email}</span>
+                  Confirmation sent to{" "}
+                  <span className="text-white font-mono-data text-xs">{sentEmail}</span>
+                </div>
+                <div className="text-[10px] text-zinc-500 max-w-xs mt-3 leading-relaxed">
+                  You'll receive matching alerts in real time. If you don't see the email, check spam — and remember Resend test mode only delivers to your registered Resend address.
                 </div>
                 <div className="text-[11px] text-zinc-500 font-mono-data mt-3">
-                  {new Date().toLocaleTimeString()} · DEMO
+                  {new Date().toLocaleTimeString()} · LIVE
                 </div>
                 <Button
                   variant="outline"
