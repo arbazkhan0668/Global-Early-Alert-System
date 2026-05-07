@@ -1,6 +1,7 @@
 import { Radio, Activity, Globe2 } from "lucide-react";
 import { motion } from "framer-motion";
 import SubscribeModal from "@/components/SubscribeModal";
+import ShareSnapshot from "@/components/ShareSnapshot";
 
 const Stat = ({ label, value, color, testid }) => (
   <div className="flex flex-col" data-testid={testid}>
@@ -14,7 +15,7 @@ const Stat = ({ label, value, color, testid }) => (
   </div>
 );
 
-const StatsHeader = ({ stats, connected }) => {
+const StatsHeader = ({ stats, connected, alerts = [] }) => {
   const total = stats?.total ?? 0;
   const cats = stats?.by_category ?? { weather: 0, disease: 0, conflict: 0 };
   const sev = stats?.by_severity ?? {};
@@ -54,11 +55,12 @@ const StatsHeader = ({ stats, connected }) => {
         <Stat label="Critical" value={sev.critical || 0} color="#FF453A" testid="stat-critical" />
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="hidden lg:flex items-center gap-2 text-xs text-zinc-400 font-mono-data">
+      <div className="flex items-center gap-2">
+        <div className="hidden lg:flex items-center gap-2 text-xs text-zinc-400 font-mono-data mr-2">
           <Activity className="w-3.5 h-3.5" />
           v1.0
         </div>
+        <ShareSnapshot alerts={alerts} />
         <SubscribeModal />
       </div>
     </motion.header>

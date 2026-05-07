@@ -148,7 +148,7 @@ const Dashboard = () => {
       {/* Top header */}
       <div className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
         <div className="pointer-events-auto">
-          <StatsHeader stats={filteredStats} connected={connected} />
+          <StatsHeader stats={filteredStats} connected={connected} alerts={filtered} />
         </div>
       </div>
 
