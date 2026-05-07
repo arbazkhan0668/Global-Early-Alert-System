@@ -227,24 +227,46 @@ def _classify_weather(
                            f"Temperature {temp:.1f}°C exceeds extreme threshold (45°C).",
                            city, metrics, source)
     if temp >= 40:
-        return _make_alert("weather", "heatwave", "high", 0.75,
+        return _make_alert("weather", "heatwave", "high", 0.8,
                            f"Heatwave warning in {city['name']}",
                            f"Temperature {temp:.1f}°C is dangerously high.",
+                           city, metrics, source)
+    if temp >= 35:
+        return _make_alert("weather", "heatwave", "moderate", 0.55,
+                           f"Elevated heat in {city['name']}",
+                           f"Temperature {temp:.1f}°C — heat advisory threshold.",
                            city, metrics, source)
     if rain_1h >= 30:
         return _make_alert("weather", "flood", "critical", 0.9,
                            f"Heavy rainfall / flood risk in {city['name']}",
                            f"Rainfall {rain_1h:.1f}mm/h indicates flood risk.",
                            city, metrics, source)
-    if rain_1h >= 10:
-        return _make_alert("weather", "rain", "moderate", 0.5,
+    if rain_1h >= 5:
+        sev = "high" if rain_1h >= 10 else "moderate"
+        score = 0.7 if rain_1h >= 10 else 0.45
+        return _make_alert("weather", "rain", sev, score,
                            f"Heavy rain in {city['name']}",
                            f"Rainfall {rain_1h:.1f}mm/h.",
                            city, metrics, source)
-    if weather_main.lower() in {"thunderstorm", "tornado"}:
+    if weather_main.lower() in {"thunderstorm", "tornado", "squall"}:
         return _make_alert("weather", "storm", "high", 0.7,
                            f"Severe storm near {city['name']}",
-                           f"{weather_main} detected.",
+                           f"{weather_main} detected near {city['name']}.",
+                           city, metrics, source)
+    if temp <= -15:
+        return _make_alert("weather", "storm", "moderate", 0.5,
+                           f"Extreme cold in {city['name']}",
+                           f"Temperature {temp:.1f}°C — cold wave advisory.",
+                           city, metrics, source)
+    if temp >= 32:
+        return _make_alert("weather", "heatwave", "low", 0.4,
+                           f"Warm conditions in {city['name']}",
+                           f"Temperature {temp:.1f}°C — monitor for heat advisory.",
+                           city, metrics, source)
+    if temp >= 30 and humidity is not None and humidity >= 75:
+        return _make_alert("weather", "heatwave", "low", 0.35,
+                           f"High humidity heat in {city['name']}",
+                           f"{temp:.1f}°C with {humidity:.0f}% humidity — discomfort index elevated.",
                            city, metrics, source)
     return None
 
@@ -533,6 +555,32 @@ async def alerts_stats():
         "by_category": by_cat,
         "by_severity": by_sev,
         "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@api_router.get("/sources")
+async def sources_status():
+    """Reports which data sources are configured live vs mock."""
+    items = await _get_alerts(None)
+    sources_by_cat: Dict[str, set] = {"weather": set(), "disease": set(), "conflict": set()}
+    for a in items:
+        sources_by_cat.setdefault(a["category"], set()).add(a.get("source", "unknown"))
+    return {
+        "weather": {
+            "live": bool(OPENWEATHER_API_KEY) and "openweathermap" in sources_by_cat.get("weather", set()),
+            "provider": "OpenWeatherMap" if OPENWEATHER_API_KEY else "mock",
+            "sources": sorted(sources_by_cat.get("weather", set())),
+        },
+        "disease": {
+            "live": False,
+            "provider": "WHO/CDC (mock)",
+            "sources": sorted(sources_by_cat.get("disease", set())),
+        },
+        "conflict": {
+            "live": False,
+            "provider": "ACLED (mock)",
+            "sources": sorted(sources_by_cat.get("conflict", set())),
+        },
     }
 
 

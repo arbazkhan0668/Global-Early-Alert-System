@@ -2,6 +2,7 @@ import { Radio, Activity, Globe2 } from "lucide-react";
 import { motion } from "framer-motion";
 import SubscribeModal from "@/components/SubscribeModal";
 import ShareSnapshot from "@/components/ShareSnapshot";
+import SourceStatus from "@/components/SourceStatus";
 
 const Stat = ({ label, value, color, testid }) => (
   <div className="flex flex-col" data-testid={testid}>
@@ -56,6 +57,7 @@ const StatsHeader = ({ stats, connected, alerts = [] }) => {
       </div>
 
       <div className="flex items-center gap-2">
+        <SourceStatus />
         <div className="hidden lg:flex items-center gap-2 text-xs text-zinc-400 font-mono-data mr-2">
           <Activity className="w-3.5 h-3.5" />
           v1.0
