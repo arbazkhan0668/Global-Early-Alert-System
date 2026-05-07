@@ -1,5 +1,6 @@
 import { Radio, Activity, Globe2 } from "lucide-react";
 import { motion } from "framer-motion";
+import SubscribeModal from "@/components/SubscribeModal";
 
 const Stat = ({ label, value, color, testid }) => (
   <div className="flex flex-col" data-testid={testid}>
@@ -53,9 +54,12 @@ const StatsHeader = ({ stats, connected }) => {
         <Stat label="Critical" value={sev.critical || 0} color="#FF453A" testid="stat-critical" />
       </div>
 
-      <div className="hidden lg:flex items-center gap-2 text-xs text-zinc-400 font-mono-data">
-        <Activity className="w-3.5 h-3.5" />
-        v1.0 / situational-awareness
+      <div className="flex items-center gap-4">
+        <div className="hidden lg:flex items-center gap-2 text-xs text-zinc-400 font-mono-data">
+          <Activity className="w-3.5 h-3.5" />
+          v1.0
+        </div>
+        <SubscribeModal />
       </div>
     </motion.header>
   );

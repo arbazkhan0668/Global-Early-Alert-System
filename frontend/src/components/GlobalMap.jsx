@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { colorForAlert } from "@/lib/alerts";
+import HeatmapLayer from "@/components/HeatmapLayer";
 
 const buildIcon = (alert) => {
   const color = colorForAlert(alert);
@@ -26,7 +27,7 @@ const FlyTo = ({ target }) => {
   return null;
 };
 
-const GlobalMap = ({ alerts, focus }) => {
+const GlobalMap = ({ alerts, focus, heatmap }) => {
   const markerRefs = useRef({});
 
   useEffect(() => {
@@ -89,6 +90,7 @@ const GlobalMap = ({ alerts, focus }) => {
         subdomains="abcd"
       />
       {markers}
+      <HeatmapLayer alerts={alerts} enabled={heatmap} />
       <FlyTo target={focus?.location} />
     </MapContainer>
   );
