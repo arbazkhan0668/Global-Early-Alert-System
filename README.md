@@ -1,3 +1,3 @@
 # Here are your Instructions
 
-contributions by arbaz khan
+contributions by arbaz ahmad khan 
